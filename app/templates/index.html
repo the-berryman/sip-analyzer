@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STIR/SHAKEN PCAP Analyzer</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-dark: #131C41;
+            --primary-light: #A5B2E2;
+            --primary-bg: #F0F1F7;
+            --primary-text: #333335;
+            --secondary-text: #313131;
+            --accent-gray: #ADADB0;
+            --accent-purple: #906AE2;
+            --accent-blue: #28B8DB;
+            --chart-purple: #845ADF;
+            --chart-green: #26BF94;
+            --chart-blue: #23B7E5;
+            --chart-yellow: #F5B849;
+            --chart-orange: #FA8231;
+            --chart-red: #C0392B;
+            --chart-pink: #EB4493;
+            --chart-forest: #386706;
+            --chart-gray: #A5B1C2;
+            --chart-slate: #4B6584;
+        }
+
+        body {
+            background-color: var(--primary-bg);
+            color: var(--primary-text);
+        }
+
+        .header {
+            background-color: var(--primary-dark);
+            color: white;
+        }
+
+        .card {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--accent-gray);
+            background-color: white;
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--accent-purple);
+            background-color: var(--primary-light);
+            opacity: 0.8;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-purple);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .attestation-a { background-color: var(--chart-green); }
+        .attestation-b { background-color: var(--chart-yellow); }
+        .attestation-c { background-color: var(--chart-red); }
+    </style>
+</head>
+<body>
+    <header class="header py-6">
+        <div class="container mx-auto px-4">
+            <h1 class="text-3xl font-bold">STIR/SHAKEN PCAP Analyzer</h1>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+        <div class="card p-6 mb-8">
+            <div id="upload-zone" class="upload-zone p-8 text-center cursor-pointer">
+                <div class="mb-4">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <p class="text-lg mb-2">Drop your PCAP file here</p>
+                <p class="text-sm text-gray-500">or click to select file</p>
+                <input type="file" id="file-input" class="hidden" accept=".pcap">
+            </div>
+        </div>
+
+        <div id="results" class="hidden">
+            <h2 class="text-2xl font-bold mb-4">Analysis Results</h2>
+            <div id="findings-container"></div>
+        </div>
+
+        <div id="loading" class="hidden">
+            <div class="flex items-center justify-center p-8">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-purple"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // File upload handling
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+        const resultsDiv = document.getElementById('results');
+        const loadingDiv = document.getElementById('loading');
+        const findingsContainer = document.getElementById('findings-container');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            uploadZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            uploadZone.classList.remove('dragover');
+        }
+
+        uploadZone.addEventListener('drop', handleDrop, false);
+        uploadZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (!file.name.endsWith('.pcap')) {
+                    alert('Please upload a .pcap file');
+                    return;
+                }
+                uploadFile(file);
+            }
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            loadingDiv.classList.remove('hidden');
+            resultsDiv.classList.add('hidden');
+
+            fetch('/analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingDiv.classList.add('hidden');
+                resultsDiv.classList.remove('hidden');
+                displayFindings(data.findings);
+            })
+            .catch(error => {
+                loadingDiv.classList.add('hidden');
+                alert('Error analyzing file: ' + error);
+            });
+        }
+
+        function displayFindings(findings) {
+            findingsContainer.innerHTML = '';
+
+            findings.forEach((finding, index) => {
+                const card = document.createElement('div');
+                card.className = 'card p-6 mb-4';
+
+                const attestationLevel = finding.analysis.attestation_level || 'Unknown';
+                const attestationClass = `attestation-${attestationLevel.toLowerCase()}`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-bold">Finding ${index + 1}</h3>
+                        <span class="px-3 py-1 rounded-full text-white ${attestationClass}">
+                            Attestation: ${attestationLevel}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p class="font-semibold">Origin Number:</p>
+                            <p>${finding.analysis.originating_number || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold">Destination Number:</p>
+                            <p>${finding.analysis.destination_number || 'N/A'}</p>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <p class="font-semibold">Timestamp:</p>
+                        <p>${finding.analysis.timestamp || 'N/A'}</p>
+                    </div>
+                    ${finding.risk_assessment && finding.risk_assessment.length > 0 ? `
+                        <div class="mt-4">
+                            <h4 class="font-semibold mb-2">Risk Assessment:</h4>
+                            <ul class="list-disc pl-4">
+                                ${finding.risk_assessment.map(risk => `
+                                    <li class="text-${risk.level === 'WARNING' ? 'yellow' : 'red'}-600">
+                                        ${risk.type}: ${risk.detail}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                `;
+
+                findingsContainer.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
