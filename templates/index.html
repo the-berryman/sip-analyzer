@@ -161,27 +161,33 @@
         }
 
         function uploadFile(file) {
-            const formData = new FormData();
-            formData.append('file', file);
+    const formData = new FormData();
+    formData.append('file', file);
 
-            loadingDiv.classList.remove('hidden');
-            resultsDiv.classList.add('hidden');
+    loadingDiv.classList.remove('hidden');
+    resultsDiv.classList.add('hidden');
 
-            fetch('/analyze', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                loadingDiv.classList.add('hidden');
-                resultsDiv.classList.remove('hidden');
-                displayFindings(data.findings);
-            })
-            .catch(error => {
-                loadingDiv.classList.add('hidden');
-                alert('Error analyzing file: ' + error);
-            });
+    fetch('/analyze', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Server response:', data); // Add this line
+        loadingDiv.classList.add('hidden');
+        resultsDiv.classList.remove('hidden');
+        if (data.findings) {
+            displayFindings(data.findings);
+        } else {
+            alert('No findings in response');
         }
+    })
+    .catch(error => {
+        console.error('Error:', error); // Add this line
+        loadingDiv.classList.add('hidden');
+        alert('Error analyzing file: ' + error);
+    });
+}
 
         function displayFindings(findings) {
             findingsContainer.innerHTML = '';
