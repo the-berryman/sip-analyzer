@@ -1,2 +1,3 @@
-wireshark-common
 tshark
+wireshark-common
+libcap2-bin

@@ -1,1 +1,1 @@
-web: TSHARK_PATH=/usr/bin/tshark gunicorn app:app
+web: setcap cap_net_raw,cap_net_admin+eip /usr/bin/dumpcap && TSHARK_PATH=/usr/bin/tshark gunicorn app:app
