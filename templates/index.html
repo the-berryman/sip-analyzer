@@ -76,94 +76,95 @@
     </header>
 
     <main class="container mx-auto px-4 py-8">
-        <div class="card p-6 mb-8">
-            <div id="upload-zone" class="upload-zone p-8 text-center cursor-pointer">
-                <div class="mb-4">
-                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </div>
-                <p class="text-lg mb-2">Drop your PCAP file here</p>
-                <p class="text-sm text-gray-500">or click to select file</p>
-                <input type="file" id="file-input" class="hidden" accept=".pcap">
+    <div class="card p-6 mb-8">
+        <div id="upload-zone" class="upload-zone p-8 text-center cursor-pointer">
+            <div class="mb-4">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
             </div>
+            <p class="text-lg mb-2">Drop your PCAP files here</p>
+            <p class="text-sm text-gray-500">or click to select files</p>
+            <input type="file" id="file-input" class="hidden" accept=".pcap" multiple>
         </div>
+    </div>
 
-        <div id="results" class="hidden">
-            <h2 class="text-2xl font-bold mb-4">Analysis Results</h2>
-            <div id="findings-container"></div>
-        </div>
+    <div id="results" class="hidden">
+        <h2 class="text-2xl font-bold mb-4">Analysis Results</h2>
+        <div id="findings-container"></div>
+    </div>
 
-        <div id="loading" class="hidden">
-            <div class="flex items-center justify-center p-8">
-                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-purple"></div>
-            </div>
+    <div id="loading" class="hidden">
+        <div class="flex items-center justify-center p-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-purple"></div>
         </div>
-    </main>
+    </div>
+</main>
 
     <script>
         // File upload handling
-        const uploadZone = document.getElementById('upload-zone');
-        const fileInput = document.getElementById('file-input');
-        const resultsDiv = document.getElementById('results');
-        const loadingDiv = document.getElementById('loading');
-        const findingsContainer = document.getElementById('findings-container');
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+const resultsDiv = document.getElementById('results');
+const loadingDiv = document.getElementById('loading');
+const findingsContainer = document.getElementById('findings-container');
 
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            uploadZone.addEventListener(eventName, preventDefaults, false);
-        });
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    uploadZone.addEventListener(eventName, preventDefaults, false);
+});
 
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
 
-        ['dragenter', 'dragover'].forEach(eventName => {
-            uploadZone.addEventListener(eventName, highlight, false);
-        });
+['dragenter', 'dragover'].forEach(eventName => {
+    uploadZone.addEventListener(eventName, highlight, false);
+});
 
-        ['dragleave', 'drop'].forEach(eventName => {
-            uploadZone.addEventListener(eventName, unhighlight, false);
-        });
+['dragleave', 'drop'].forEach(eventName => {
+    uploadZone.addEventListener(eventName, unhighlight, false);
+});
 
-        function highlight(e) {
-            uploadZone.classList.add('dragover');
-        }
+function highlight(e) {
+    uploadZone.classList.add('dragover');
+}
 
-        function unhighlight(e) {
-            uploadZone.classList.remove('dragover');
-        }
+function unhighlight(e) {
+    uploadZone.classList.remove('dragover');
+}
 
-        uploadZone.addEventListener('drop', handleDrop, false);
-        uploadZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', handleFileSelect);
+uploadZone.addEventListener('drop', handleDrop, false);
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', handleFileSelect);
 
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
-        }
+function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    handleFiles(files);
+}
 
-        function handleFileSelect(e) {
-            const files = e.target.files;
-            handleFiles(files);
-        }
+function handleFileSelect(e) {
+    const files = e.target.files;
+    handleFiles(files);
+}
 
-        function handleFiles(files) {
-            if (files.length > 0) {
-                const file = files[0];
-                if (!file.name.endsWith('.pcap')) {
-                    alert('Please upload a .pcap file');
-                    return;
-                }
-                uploadFile(file);
+function handleFiles(files) {
+    if (files.length > 0) {
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+            if (file.name.endsWith('.pcap')) {
+                formData.append('files[]', file);
+            } else {
+                alert('Please upload only .pcap files');
+                return;
             }
-        }
+        });
+        uploadFiles(formData);
+    }
+}
 
-        function uploadFile(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-
+function uploadFiles(formData) {
     loadingDiv.classList.remove('hidden');
     resultsDiv.classList.add('hidden');
 
@@ -173,70 +174,96 @@
     })
     .then(response => response.json())
     .then(data => {
-        console.log('Server response:', data); // Add this line
+        console.log('Server response:', data);
         loadingDiv.classList.add('hidden');
         resultsDiv.classList.remove('hidden');
-        if (data.findings) {
-            displayFindings(data.findings);
+        if (data.results) {
+            displayMultipleResults(data.results);
         } else {
             alert('No findings in response');
         }
     })
     .catch(error => {
-        console.error('Error:', error); // Add this line
+        console.error('Error:', error);
         loadingDiv.classList.add('hidden');
-        alert('Error analyzing file: ' + error);
+        alert('Error analyzing files: ' + error);
     });
 }
 
-        function displayFindings(findings) {
-            findingsContainer.innerHTML = '';
+function displayMultipleResults(results) {
+    findingsContainer.innerHTML = '';
 
-            findings.forEach((finding, index) => {
-                const card = document.createElement('div');
-                card.className = 'card p-6 mb-4';
+    results.forEach(result => {
+        const fileHeader = document.createElement('h2');
+        fileHeader.className = 'text-2xl font-bold mb-4 mt-8';
+        fileHeader.textContent = `File: ${result.filename}`;
+        findingsContainer.appendChild(fileHeader);
 
-                const attestationLevel = finding.analysis.attestation_level || 'Unknown';
-                const attestationClass = `attestation-${attestationLevel.toLowerCase()}`;
+        displayFindings(result.findings);
+    });
+}
 
-                card.innerHTML = `
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xl font-bold">Finding ${index + 1}</h3>
-                        <span class="px-3 py-1 rounded-full text-white ${attestationClass}">
-                            Attestation: ${attestationLevel}
-                        </span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <p class="font-semibold">Origin Number:</p>
-                            <p>${finding.analysis.originating_number || 'N/A'}</p>
-                        </div>
-                        <div>
-                            <p class="font-semibold">Destination Number:</p>
-                            <p>${finding.analysis.destination_number || 'N/A'}</p>
-                        </div>
-                    </div>
-                    <div class="mb-4">
-                        <p class="font-semibold">Timestamp:</p>
-                        <p>${finding.analysis.timestamp || 'N/A'}</p>
-                    </div>
-                    ${finding.risk_assessment && finding.risk_assessment.length > 0 ? `
-                        <div class="mt-4">
-                            <h4 class="font-semibold mb-2">Risk Assessment:</h4>
-                            <ul class="list-disc pl-4">
-                                ${finding.risk_assessment.map(risk => `
-                                    <li class="text-${risk.level === 'WARNING' ? 'yellow' : 'red'}-600">
-                                        ${risk.type}: ${risk.detail}
-                                    </li>
-                                `).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                `;
+function displayFindings(findings) {
+    findings.forEach((finding, index) => {
+        const card = document.createElement('div');
+        card.className = 'card p-6 mb-4';
 
-                findingsContainer.appendChild(card);
-            });
-        }
+        const attestationLevel = finding.analysis.attestation_level || 'Unknown';
+        const attestationClass = `attestation-${attestationLevel.toLowerCase()}`;
+
+        const certInfo = finding.analysis.certificate_info || {};
+        const carrierInfo = certInfo.carrier ?
+            `<span class="text-green-600">${certInfo.carrier.toUpperCase()}</span>` :
+            '<span class="text-red-600">Unknown Carrier</span>';
+
+        card.innerHTML = `
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold">Finding ${index + 1}</h3>
+                <span class="px-3 py-1 rounded-full text-white ${attestationClass}">
+                    Attestation: ${attestationLevel}
+                </span>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <p class="font-semibold">Origin Number:</p>
+                    <p>${finding.analysis.originating_number || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="font-semibold">Destination Number:</p>
+                    <p>${finding.analysis.destination_number || 'N/A'}</p>
+                </div>
+            </div>
+            <div class="mb-4">
+                <p class="font-semibold">Certificate Domain:</p>
+                <p>${certInfo.url || 'N/A'} (${carrierInfo})</p>
+            </div>
+            <div class="mb-4">
+                <p class="font-semibold">Call Origin Info:</p>
+                <p>From Display: ${finding.analysis.from_display || 'N/A'}</p>
+                <p>User Agent: ${finding.analysis.user_agent || 'N/A'}</p>
+                <p>Diversion Present: ${finding.analysis.diversion_present ? 'Yes' : 'No'}</p>
+            </div>
+            <div class="mb-4">
+                <p class="font-semibold">Timestamp:</p>
+                <p>${finding.analysis.timestamp || 'N/A'}</p>
+            </div>
+            ${finding.risk_assessment && finding.risk_assessment.length > 0 ? `
+                <div class="mt-4">
+                    <h4 class="font-semibold mb-2">Risk Assessment:</h4>
+                    <ul class="list-disc pl-4">
+                        ${finding.risk_assessment.map(risk => `
+                            <li class="text-${risk.level === 'WARNING' ? 'yellow' : 'red'}-600">
+                                ${risk.type}: ${risk.detail}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        `;
+
+        findingsContainer.appendChild(card);
+    });
+}
     </script>
 </body>
 </html>

@@ -1,0 +1,1 @@
+web: TSHARK_PATH=/usr/bin/tshark gunicorn app:app
