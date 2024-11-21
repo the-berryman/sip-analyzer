@@ -1,4 +1,5 @@
 Flask==2.0.1
+Werkzeug==2.0.3
 pyshark==0.4.3
 gunicorn==20.1.0
 nest-asyncio==1.5.6
