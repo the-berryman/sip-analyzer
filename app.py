@@ -23,6 +23,117 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 
+def analyze_sip_fraud_patterns(packet):
+    """Deep analysis of SIP headers for fraud detection"""
+    fraud_indicators = []
+    risk_level = "LOW"
+
+    try:
+        # Extract key SIP header information
+        packet_info = {
+            'source_ip': packet.ip.src if hasattr(packet, 'ip') else None,
+            'dest_ip': packet.ip.dst if hasattr(packet, 'ip') else None,
+            'from_uri': getattr(packet.sip, 'from_uri', None),
+            'to_uri': getattr(packet.sip, 'to_uri', None),
+            'pai': getattr(packet.sip, 'p_asserted_identity', None),
+            'user_agent': getattr(packet.sip, 'user_agent', None),
+            'contact': getattr(packet.sip, 'contact', None),
+            'via': getattr(packet.sip, 'via', None),
+            'record_route': getattr(packet.sip, 'record_route', None)
+        }
+
+        # Check for international routing of domestic calls
+        from_number = extract_number(packet_info['from_uri'])
+        to_number = extract_number(packet_info['to_uri'])
+
+        if from_number and to_number:
+            if (from_number.startswith('1') and to_number.startswith('1') and
+                    not packet_info['dest_ip'].startswith(('10.', '172.', '192.168.'))):
+                fraud_indicators.append({
+                    'type': 'SUSPICIOUS_ROUTING',
+                    'detail': 'Domestic call routed internationally',
+                    'severity': 'HIGH',
+                    'evidence': f"Source: {from_number}, Dest: {to_number}, IP: {packet_info['dest_ip']}"
+                })
+                risk_level = "HIGH"
+
+        # Check for PAI mismatches
+        if packet_info['pai']:
+            pai_number = extract_number(packet_info['pai'])
+            pai_host = extract_host(packet_info['pai'])
+            contact_host = extract_host(packet_info['contact'])
+
+            if pai_host and contact_host and pai_host != contact_host:
+                fraud_indicators.append({
+                    'type': 'PAI_MISMATCH',
+                    'detail': 'P-Asserted-Identity host differs from Contact host',
+                    'severity': 'HIGH',
+                    'evidence': f"PAI Host: {pai_host}, Contact Host: {contact_host}"
+                })
+                risk_level = "HIGH"
+
+        # Check for suspicious equipment signatures
+        if packet_info['record_route'] and 'sansay' in packet_info['record_route'].lower():
+            fraud_indicators.append({
+                'type': 'SUSPICIOUS_EQUIPMENT',
+                'detail': 'Session border controller information exposed in routing path',
+                'severity': 'MEDIUM',
+                'evidence': f"Record-Route: {packet_info['record_route']}"
+            })
+            risk_level = max(risk_level, "MEDIUM")
+
+        # Check for missing STIR/SHAKEN
+        has_identity = False
+        for field in dir(packet.sip):
+            if field.startswith('identity'):
+                has_identity = True
+                break
+
+        if not has_identity:
+            fraud_indicators.append({
+                'type': 'NO_STIRSHAKEN',
+                'detail': 'Call lacks STIR/SHAKEN attestation',
+                'severity': 'MEDIUM',
+                'evidence': 'No Identity header present'
+            })
+            risk_level = max(risk_level, "MEDIUM")
+
+        # Check for verstat failures
+        if packet_info['pai'] and 'verstat=No-TN-Validation' in packet_info['pai']:
+            fraud_indicators.append({
+                'type': 'VERSTAT_FAILURE',
+                'detail': 'Number failed verification status check',
+                'severity': 'HIGH',
+                'evidence': f"PAI: {packet_info['pai']}"
+            })
+            risk_level = "HIGH"
+
+        return {
+            'fraud_analysis': {
+                'risk_level': risk_level,
+                'indicators': fraud_indicators,
+                'analyzed_headers': packet_info
+            }
+        }
+
+    except Exception as e:
+        return {
+            'error': str(e),
+            'fraud_analysis': {
+                'risk_level': 'ERROR',
+                'indicators': [],
+                'analyzed_headers': {}
+            }
+        }
+
+
+def extract_host(uri):
+    """Extract host from SIP URI"""
+    if not uri:
+        return None
+    match = re.search(r'@([^:;>]+)', uri)
+    return match.group(1) if match else None
+
 def analyze_pcap(pcap_file):
     """Analyze PCAP file for unique STIR/SHAKEN sessions"""
     try:
@@ -62,8 +173,9 @@ def analyze_pcap(pcap_file):
 
 
 def analyze_basic_sip(packet):
-    """Analyze SIP packet without STIR/SHAKEN"""
+    """Analyze SIP packet including fraud detection"""
     try:
+        # Your existing packet_info collection
         packet_info = {
             'timestamp': packet.sniff_timestamp,
             'source_ip': packet.ip.src if hasattr(packet, 'ip') else None,
@@ -77,6 +189,10 @@ def analyze_basic_sip(packet):
             'to_uri': getattr(packet.sip, 'to_uri', None)
         }
 
+        # Get fraud analysis
+        fraud_results = analyze_sip_fraud_patterns(packet)
+
+        # Combine existing analysis with fraud detection
         analysis = {
             'packet_info': packet_info,
             'analysis': {
@@ -87,13 +203,15 @@ def analyze_basic_sip(packet):
                 'diversion_present': bool(packet_info['diversion_header']),
                 'from_display': packet_info['from_display'],
                 'user_agent': packet_info['user_agent'],
-                'stir_shaken_implemented': False
+                'stir_shaken_implemented': False,
+                'fraud_risk_level': fraud_results['fraud_analysis']['risk_level']
             },
             'risk_assessment': [{
                 'level': 'WARNING',
                 'type': 'NO_STIR_SHAKEN',
                 'detail': 'No STIR/SHAKEN implementation detected'
-            }]
+            }],
+            'fraud_indicators': fraud_results['fraud_analysis']['indicators']
         }
 
         return analysis
@@ -103,6 +221,7 @@ def analyze_basic_sip(packet):
             'error': str(e),
             'packet_info': packet_info
         }
+
 def extract_number(uri):
     """Extract phone number from SIP URI"""
     if not uri:
