@@ -283,12 +283,30 @@ function displayFindings(findings, container, totalFindings) {
             </div>
 
             <!-- Call Details -->
-            <div class="mb-4">
-                <p class="font-semibold">Call Origin Info:</p>
-                <p>From Display: ${finding.analysis.from_display || 'N/A'}</p>
-                <p>User Agent: ${finding.analysis.user_agent || 'N/A'}</p>
-                <p>Carrier: ${finding.analysis.carrier || 'N/A'}</p>
-                <p>Diversion Present: ${finding.analysis.diversion_present ? 'Yes' : 'No'}</p>
+            <div class="mb-4 p-4 bg-gray-50 rounded">
+                <h4 class="font-semibold mb-2">Call Details</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="font-semibold">From Display:</p>
+                        <p>${finding.analysis.from_display || 'N/A'}</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold">User Agent:</p>
+                        <p>${finding.analysis.user_agent || 'N/A'}</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold">Carrier:</p>
+                        <p>${finding.analysis.carrier || 'N/A'}</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold">Number Type:</p>
+                        <p>${finding.analysis.number_type || 'Unknown'}</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold">Diversion Present:</p>
+                        <p>${finding.analysis.diversion_present ? 'Yes' : 'No'}</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Timestamp -->

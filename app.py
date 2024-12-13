@@ -183,12 +183,26 @@ def analyze_basic_sip(packet):
             'dest_ip': packet.ip.dst if hasattr(packet, 'ip') else None,
             'sip_method': packet.sip.method if hasattr(packet.sip, 'method') else None,
             'diversion_header': getattr(packet.sip, 'diversion', None),
-            'from_display': getattr(packet.sip, 'from_display', None),
+            'from_display': None,  # We'll set this with enhanced extraction
             'user_agent': getattr(packet.sip, 'user_agent', None),
             'contact': getattr(packet.sip, 'contact', None),
             'from_uri': getattr(packet.sip, 'from_uri', None),
-            'to_uri': getattr(packet.sip, 'to_uri', None)
+            'to_uri': getattr(packet.sip, 'to_uri', None),
+            'number_type': None  # New field for number type
         }
+
+        # Enhanced From Display extraction
+        if hasattr(packet.sip, 'from'):
+            from_header = getattr(packet.sip, 'from')
+            # Try to extract display name between quotes
+            display_match = re.search(r'"([^"]+)"', from_header)
+            if display_match:
+                packet_info['from_display'] = display_match.group(1)
+            elif '<' in from_header:
+                # Try to get text before the < if no quotes
+                display_name = from_header.split('<')[0].strip()
+                if display_name:
+                    packet_info['from_display'] = display_name
 
         # Enhanced number extraction with fallbacks
         from_number = None
@@ -215,21 +229,32 @@ def analyze_basic_sip(packet):
         # Enhanced user agent extraction
         user_agent = packet_info['user_agent']
         if not user_agent:
-            # Try to find User-Agent in raw packet
             for field in dir(packet.sip):
                 if 'user_agent' in field.lower():
                     user_agent = getattr(packet.sip, field)
                     break
 
-        # Get fraud analysis
-        fraud_results = analyze_sip_fraud_patterns(packet)
-
-        # Get carrier info if available
+        # Enhanced carrier detection
         carrier_info = None
+        # Check X-Carrier header first
         for field in dir(packet.sip):
             if 'carrier' in field.lower():
                 carrier_info = getattr(packet.sip, field)
                 break
+
+        # If no carrier found, try hostname patterns
+        if not carrier_info and hasattr(packet.sip, 'from'):
+            from_host = re.search(r'@([^;>]+)', getattr(packet.sip, 'from'))
+            if from_host:
+                hostname = from_host.group(1)
+                carrier_info = identify_carrier_from_hostname(hostname)
+
+        # Number type detection
+        if from_number:
+            packet_info['number_type'] = identify_number_type(from_number)
+
+        # Get fraud analysis
+        fraud_results = analyze_sip_fraud_patterns(packet)
 
         # Enhanced diversion detection
         diversion_present = bool(packet_info['diversion_header'])
@@ -250,6 +275,7 @@ def analyze_basic_sip(packet):
                 'from_display': packet_info['from_display'] or 'N/A',
                 'user_agent': user_agent or 'N/A',
                 'carrier': carrier_info or 'N/A',
+                'number_type': packet_info['number_type'] or 'Unknown',
                 'stir_shaken_implemented': False,
                 'fraud_risk_level': fraud_results['fraud_analysis']['risk_level']
             },
@@ -277,6 +303,43 @@ def analyze_basic_sip(packet):
             'error': str(e),
             'packet_info': packet_info
         }
+
+
+def identify_carrier_from_hostname(hostname):
+    """Identify carrier based on hostname patterns"""
+    carrier_patterns = {
+        'verizon': [r'verizon\.com$', r'vzw\.com$'],
+        'att': [r'att\.com$', r'attws\.com$'],
+        'tmobile': [r't-mobile\.com$', r'tmo\.com$'],
+        'sprint': [r'sprint\.com$'],
+        'bandwidth': [r'bandwidth\.com$'],
+        'twilio': [r'twilio\.com$'],
+        'vonage': [r'vonage\.com$'],
+        'ringcentral': [r'ringcentral\.com$']
+    }
+
+    for carrier, patterns in carrier_patterns.items():
+        if any(re.search(pattern, hostname, re.I) for pattern in patterns):
+            return carrier
+    return None
+
+
+def identify_number_type(number):
+    """Identify number type based on known patterns"""
+    # Remove any leading + or 1
+    number = re.sub(r'^[+1]', '', number)
+
+    # Check for toll-free numbers
+    if number.startswith(('800', '888', '877', '866', '855', '844', '833')):
+        return "Toll-Free"
+
+    # Check for known VoIP ranges
+    voip_prefixes = ['456']  # Add more known VoIP prefixes
+    if any(number.startswith(prefix) for prefix in voip_prefixes):
+        return "VoIP"
+
+    return "Unknown"
+
 def extract_number(uri):
     """Extract phone number from SIP URI"""
     if not uri:
