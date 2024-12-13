@@ -174,9 +174,9 @@ def analyze_pcap(pcap_file):
 
 
 def analyze_basic_sip(packet):
-    """Analyze SIP packet including fraud detection"""
+    """Analyze SIP packet including fraud detection with enhanced fallback parsing"""
     try:
-        # Your existing packet_info collection
+        # Initial packet info collection
         packet_info = {
             'timestamp': packet.sniff_timestamp,
             'source_ip': packet.ip.src if hasattr(packet, 'ip') else None,
@@ -190,20 +190,66 @@ def analyze_basic_sip(packet):
             'to_uri': getattr(packet.sip, 'to_uri', None)
         }
 
+        # Enhanced number extraction with fallbacks
+        from_number = None
+        to_number = None
+
+        # Try multiple sources for 'from' number
+        if packet_info['from_uri']:
+            from_number = extract_number(packet_info['from_uri'])
+        if not from_number and hasattr(packet.sip, 'from'):
+            from_number = extract_number(getattr(packet.sip, 'from'))
+        if not from_number and hasattr(packet.sip, 'p_asserted_identity'):
+            from_number = extract_number(getattr(packet.sip, 'p_asserted_identity'))
+        if not from_number and hasattr(packet.sip, 'remote_party_id'):
+            from_number = extract_number(getattr(packet.sip, 'remote_party_id'))
+
+        # Try multiple sources for 'to' number
+        if packet_info['to_uri']:
+            to_number = extract_number(packet_info['to_uri'])
+        if not to_number and hasattr(packet.sip, 'to'):
+            to_number = extract_number(getattr(packet.sip, 'to'))
+        if not to_number and hasattr(packet.sip, 'request_uri'):
+            to_number = extract_number(getattr(packet.sip, 'request_uri'))
+
+        # Enhanced user agent extraction
+        user_agent = packet_info['user_agent']
+        if not user_agent:
+            # Try to find User-Agent in raw packet
+            for field in dir(packet.sip):
+                if 'user_agent' in field.lower():
+                    user_agent = getattr(packet.sip, field)
+                    break
+
         # Get fraud analysis
         fraud_results = analyze_sip_fraud_patterns(packet)
 
-        # Combine existing analysis with fraud detection
+        # Get carrier info if available
+        carrier_info = None
+        for field in dir(packet.sip):
+            if 'carrier' in field.lower():
+                carrier_info = getattr(packet.sip, field)
+                break
+
+        # Enhanced diversion detection
+        diversion_present = bool(packet_info['diversion_header'])
+        if not diversion_present:
+            for field in dir(packet.sip):
+                if 'diversion' in field.lower():
+                    diversion_present = True
+                    break
+
         analysis = {
             'packet_info': packet_info,
             'analysis': {
                 'attestation_level': 'None',
-                'originating_number': extract_number(packet_info['from_uri']),
-                'destination_number': extract_number(packet_info['to_uri']),
+                'originating_number': from_number or 'N/A',
+                'destination_number': to_number or 'N/A',
                 'timestamp': datetime.fromtimestamp(float(packet_info['timestamp'])).isoformat(),
-                'diversion_present': bool(packet_info['diversion_header']),
-                'from_display': packet_info['from_display'],
-                'user_agent': packet_info['user_agent'],
+                'diversion_present': diversion_present,
+                'from_display': packet_info['from_display'] or 'N/A',
+                'user_agent': user_agent or 'N/A',
+                'carrier': carrier_info or 'N/A',
                 'stir_shaken_implemented': False,
                 'fraud_risk_level': fraud_results['fraud_analysis']['risk_level']
             },
@@ -215,6 +261,15 @@ def analyze_basic_sip(packet):
             'fraud_indicators': fraud_results['fraud_analysis']['indicators']
         }
 
+        # Additional headers that might be present
+        extra_headers = {}
+        for field in dir(packet.sip):
+            if field.startswith('p_') or field.startswith('x_'):
+                extra_headers[field] = getattr(packet.sip, field)
+
+        if extra_headers:
+            analysis['additional_headers'] = extra_headers
+
         return analysis
 
     except Exception as e:
@@ -222,7 +277,6 @@ def analyze_basic_sip(packet):
             'error': str(e),
             'packet_info': packet_info
         }
-
 def extract_number(uri):
     """Extract phone number from SIP URI"""
     if not uri:
