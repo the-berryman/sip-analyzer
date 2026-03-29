@@ -193,10 +193,14 @@ function uploadFiles(formData) {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+    .then(({ ok, data }) => {
         console.log('Server response:', data);
         loadingDiv.classList.add('hidden');
+        if (!ok) {
+            alert('Error: ' + (data.error || 'Unknown server error'));
+            return;
+        }
         resultsDiv.classList.remove('hidden');
         if (data.results) {
             displayMultipleResults(data.results);
@@ -215,34 +219,40 @@ function displayMultipleResults(results) {
     console.log("In displayMultipleResults with:", results);
     findingsContainer.innerHTML = '';
 
+    const totalFindings = results.reduce((sum, r) => sum + (Array.isArray(r.findings) ? r.findings.length : 1), 0);
+    let globalIndex = 0;
+
     results.forEach(result => {
         console.log("Processing result:", result);
 
-        // File Section Container
-        const fileSection = document.createElement('div');
-        fileSection.className = 'mb-8';
-
-        // Create and add file header first
         const fileHeader = document.createElement('h2');
         fileHeader.className = 'text-2xl font-bold mb-4 mt-8';
         fileHeader.textContent = `File: ${result.filename}`;
         findingsContainer.appendChild(fileHeader);
 
-        // Process findings
-        if (Array.isArray(result.findings)) {
-            displayFindings(result.findings, findingsContainer, result.findings.length);
-        } else {
-            displayFindings([result.findings], findingsContainer, 1);
-        }
+        const findings = Array.isArray(result.findings) ? result.findings : [result.findings];
+        displayFindings(findings, findingsContainer, totalFindings, globalIndex);
+        globalIndex += findings.length;
     });
 }
 
-function displayFindings(findings, container, totalFindings) {
+function displayFindings(findings, container, totalFindings, indexOffset = 0) {
     console.log("DisplayFindings received:", findings);
 
     findings.forEach((finding, index) => {
+        const globalNum = indexOffset + index + 1;
         const card = document.createElement('div');
         card.className = 'card p-6 mb-4';
+
+        // Handle error findings
+        if (!finding.analysis) {
+            card.innerHTML = `
+                <div class="text-red-600 font-semibold">Error processing finding ${index + 1}</div>
+                <p class="text-sm text-gray-600 mt-1">${finding.error || 'Unknown error'}</p>
+            `;
+            container.appendChild(card);
+            return;
+        }
 
         // Get attestation badge color
         const attestationLevel = finding.analysis.attestation_level || 'None';
@@ -264,7 +274,7 @@ function displayFindings(findings, container, totalFindings) {
 
         card.innerHTML = `
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-xl font-bold">Finding ${index + 1} of ${totalFindings}</h3>
+                <h3 class="text-xl font-bold">Finding ${globalNum} of ${totalFindings}</h3>
                 <span class="px-3 py-1 rounded-full text-white ${attestationClass}">
                     Attestation: ${attestationLevel}
                 </span>
