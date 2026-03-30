@@ -12,8 +12,9 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
-TSHARK_PATH = r"C:\Program Files\Wireshark\tshark.exe"  # Adjust path if needed
-os.environ['TSHARK_PATH'] = TSHARK_PATH
+# Use env var if set (e.g. on Railway), otherwise fall back to local Windows path
+if not os.environ.get('TSHARK_PATH'):
+    os.environ['TSHARK_PATH'] = r"C:\Program Files\Wireshark\tshark.exe"
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -81,7 +82,8 @@ def analyze_sip_fraud_patterns(packet):
                 'severity': 'MEDIUM',
                 'evidence': f"Record-Route: {packet_info['record_route']}"
             })
-            risk_level = max(risk_level, "MEDIUM")
+            if risk_level == "LOW":
+                risk_level = "MEDIUM"
 
         # Check for missing STIR/SHAKEN
         has_identity = False
@@ -97,7 +99,8 @@ def analyze_sip_fraud_patterns(packet):
                 'severity': 'MEDIUM',
                 'evidence': 'No Identity header present'
             })
-            risk_level = max(risk_level, "MEDIUM")
+            if risk_level == "LOW":
+                risk_level = "MEDIUM"
 
         # Check for verstat failures
         if packet_info['pai'] and 'verstat=No-TN-Validation' in packet_info['pai']:
@@ -142,30 +145,32 @@ def analyze_pcap(pcap_file):
         findings = []
         processed_calls = set()  # Track unique call IDs
 
-        for packet in cap:
-            if hasattr(packet, 'sip'):
-                # Get call ID to group related packets
-                call_id = getattr(packet.sip, 'call_id', None)
+        try:
+            for packet in cap:
+                if hasattr(packet, 'sip'):
+                    # Get call ID to group related packets
+                    call_id = getattr(packet.sip, 'call_id', None)
 
-                # Only process unique calls
-                if call_id and call_id not in processed_calls:
-                    processed_calls.add(call_id)
+                    # Only process unique calls
+                    if call_id and call_id not in processed_calls:
+                        processed_calls.add(call_id)
 
-                    # Check for Identity header
-                    has_identity = False
-                    for field in dir(packet.sip):
-                        if field.startswith('identity'):
-                            has_identity = True
-                            identity_header = getattr(packet.sip, field)
-                            analysis = analyze_identity_header(identity_header, packet)
+                        # Check for Identity header
+                        has_identity = False
+                        for field in dir(packet.sip):
+                            if field.startswith('identity'):
+                                has_identity = True
+                                identity_header = getattr(packet.sip, field)
+                                analysis = analyze_identity_header(identity_header, packet)
+                                findings.append(analysis)
+
+                        # If no Identity header, create one basic analysis per call
+                        if not has_identity:
+                            analysis = analyze_basic_sip(packet)
                             findings.append(analysis)
+        finally:
+            cap.close()
 
-                    # If no Identity header, create one basic analysis per call
-                    if not has_identity:
-                        analysis = analyze_basic_sip(packet)
-                        findings.append(analysis)
-
-        cap.close()
         return findings
 
     except Exception as e:
@@ -192,17 +197,24 @@ def analyze_basic_sip(packet):
         }
 
         # Enhanced From Display extraction
-        if hasattr(packet.sip, 'from'):
+        # Try pyshark's parsed field first
+        if hasattr(packet.sip, 'from_display'):
+            packet_info['from_display'] = getattr(packet.sip, 'from_display')
+        if not packet_info['from_display'] and hasattr(packet.sip, 'from'):
             from_header = getattr(packet.sip, 'from')
-            # Try to extract display name between quotes
             display_match = re.search(r'"([^"]+)"', from_header)
             if display_match:
                 packet_info['from_display'] = display_match.group(1)
             elif '<' in from_header:
-                # Try to get text before the < if no quotes
                 display_name = from_header.split('<')[0].strip()
                 if display_name:
                     packet_info['from_display'] = display_name
+        # Fall back to PAI display name
+        if not packet_info['from_display'] and hasattr(packet.sip, 'p_asserted_identity'):
+            pai = getattr(packet.sip, 'p_asserted_identity')
+            pai_display = re.search(r'"([^"]+)"', pai)
+            if pai_display:
+                packet_info['from_display'] = pai_display.group(1)
 
         # Enhanced number extraction with fallbacks
         from_number = None
@@ -326,17 +338,28 @@ def identify_carrier_from_hostname(hostname):
 
 def identify_number_type(number):
     """Identify number type based on known patterns"""
-    # Remove any leading + or 1
-    number = re.sub(r'^[+1]', '', number)
+    # Remove any leading + and/or country code 1
+    stripped = re.sub(r'^\+?1?', '', number)
 
     # Check for toll-free numbers
-    if number.startswith(('800', '888', '877', '866', '855', '844', '833')):
+    if stripped.startswith(('800', '888', '877', '866', '855', '844', '833')):
         return "Toll-Free"
 
-    # Check for known VoIP ranges
-    voip_prefixes = ['456']  # Add more known VoIP prefixes
-    if any(number.startswith(prefix) for prefix in voip_prefixes):
+    # Premium rate
+    if stripped.startswith('900'):
+        return "Premium Rate"
+
+    # Known VoIP NPA ranges
+    if stripped.startswith('456'):
         return "VoIP"
+
+    # Standard 10-digit NANP geographic number
+    if re.match(r'^[2-9]\d{9}$', stripped):
+        return "Geographic"
+
+    # Likely international (non-NANP)
+    if number.startswith('+') and not number.startswith('+1'):
+        return "International"
 
     return "Unknown"
 
